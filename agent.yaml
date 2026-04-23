@@ -1,0 +1,23 @@
+permissions:
+  shell:
+    default: ask
+    read_only: allow
+  filesystem:
+    read: allow
+    write: ask
+    delete: ask
+  network:
+    default: ask
+  high_privilege: ask
+  credential_access: deny
+memory:
+  auto_write: true
+  require_review_for_user_preferences: true
+  block_secrets: true
+security:
+  redact_logs: true
+  redact_memory: true
+  redact_model_calls: true
+  redact_network: true
+  unknown_risk: high
+
