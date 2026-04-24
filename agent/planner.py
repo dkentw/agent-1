@@ -46,7 +46,14 @@ class Plan:
 
 
 class Planner:
-    def create_plan(self, task: TaskRequest, workspace: WorkspaceContext | None) -> Plan:
+    def create_plan(
+        self,
+        task: TaskRequest,
+        workspace: WorkspaceContext | None,
+        last_active_path: str | None = None,
+        last_shell_command: str | None = None,
+        last_test_command: str | None = None,
+    ) -> Plan:
         lower = task.input.lower().strip()
         steps: list[PlanStep]
 
@@ -54,10 +61,14 @@ class Planner:
             steps = [self._git_status_step()]
         elif "git diff" in lower or lower == "diff":
             steps = [self._git_diff_step()]
+        elif test_command := self._match_test_request(task.input, workspace, last_test_command):
+            steps = [self._shell_step(test_command, title="Run tests", rationale="Run the project test command.")]
+        elif shell_command := self._match_shell_request(task.input, last_shell_command):
+            steps = [self._shell_step(shell_command, title=f"Run {shell_command}", rationale="Run the requested shell command.")]
         elif write_match := self._match_write_request(task.input):
             path, content = write_match
             steps = [self._write_file_step(path, content)]
-        elif match := self._match_read_request(task.input):
+        elif match := self._match_read_request(task.input, last_active_path):
             steps = [self._read_file_step(match)]
         elif any(token in lower for token in ("list files", "show files", "list repo", "show repo files")):
             steps = [self._list_files_step()]
@@ -68,17 +79,26 @@ class Planner:
 
         return Plan(task=task.input, steps=steps)
 
-    def _match_read_request(self, text: str) -> str | None:
+    def _match_read_request(self, text: str, last_active_path: str | None = None) -> str | None:
         stripped = text.strip()
         quoted = re.search(r'read\s+"([^"]+)"', stripped, re.IGNORECASE)
         if quoted:
             return quoted.group(1)
 
+        lowered = stripped.lower()
+        if last_active_path and any(
+            phrase in lowered
+            for phrase in ("read it", "open it", "show it", "read that", "open that", "show that")
+        ):
+            return last_active_path
+        if last_active_path and lowered in {"again", "read again", "open again", "show again"}:
+            return last_active_path
+
         simple = re.search(r"read\s+([^\s]+)", stripped, re.IGNORECASE)
         if simple:
             return simple.group(1)
 
-        if "readme" in stripped.lower():
+        if "readme" in lowered:
             return "README.md"
         return None
 
@@ -86,6 +106,30 @@ class Planner:
         quoted = re.search(r'write\s+"([^"]+)"\s+"([\s\S]+)"', text, re.IGNORECASE)
         if quoted:
             return quoted.group(1), quoted.group(2)
+        return None
+
+    def _match_shell_request(self, text: str, last_shell_command: str | None = None) -> str | None:
+        stripped = text.strip()
+        quoted = re.search(r'run\s+"([^"]+)"', stripped, re.IGNORECASE)
+        if quoted:
+            return quoted.group(1)
+        lowered = stripped.lower()
+        if last_shell_command and lowered in {"run that again", "run that command again", "repeat that command"}:
+            return last_shell_command
+        return None
+
+    def _match_test_request(
+        self,
+        text: str,
+        workspace: WorkspaceContext | None,
+        last_test_command: str | None = None,
+    ) -> str | None:
+        lowered = text.lower().strip()
+        if any(phrase in lowered for phrase in ("run tests", "run the tests", "test this", "run test suite")):
+            if workspace and workspace.test_commands:
+                return workspace.test_commands[0]
+        if last_test_command and lowered in {"run that test again", "run tests again", "repeat that test"}:
+            return last_test_command
         return None
 
     def _list_files_step(self) -> PlanStep:
@@ -126,5 +170,14 @@ class Planner:
             rationale="Apply the requested file update.",
             tool_name="filesystem.write",
             args={"path": path, "content": content},
+            risk_level="medium",
+        )
+
+    def _shell_step(self, command: str, title: str, rationale: str) -> PlanStep:
+        return PlanStep(
+            title=title,
+            rationale=rationale,
+            tool_name="shell.run",
+            args={"command": command},
             risk_level="medium",
         )

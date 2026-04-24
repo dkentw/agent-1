@@ -50,6 +50,7 @@ class AgentLoop:
         )
         session.active_task = task.input
         session.current_task_id = task.id
+        session.cancellation_requested = False
 
         on_state_change("loading_context")
         on_heartbeat(
@@ -72,13 +73,21 @@ class AgentLoop:
         if session.loaded_memories:
             self.memory_service.mark_used([memory.id for memory in session.loaded_memories])
             on_memories_loaded(session.loaded_memories)
-        plan = self.planner.create_plan(task, session.workspace_context)
+        plan = self.planner.create_plan(
+            task,
+            session.workspace_context,
+            last_active_path=session.references.last_active_path,
+            last_shell_command=session.references.last_shell_command,
+            last_test_command=session.references.last_test_command,
+        )
         session.current_plan = plan
         on_plan(plan)
 
         for step in plan.steps:
             if step.status != "pending":
                 continue
+            if session.cancellation_requested:
+                return self._cancel(plan, on_summary, on_state_change, on_heartbeat, step.title, step.tool_name)
 
             request = self.tool_router.create_request(
                 tool_name=step.tool_name,
@@ -116,7 +125,7 @@ class AgentLoop:
                 on_approval(routed)
                 return LoopRunResult(paused_for_approval=True)
 
-            step.status = "completed" if routed.status == "success" else "failed"
+            step.status = "completed" if routed.status == "success" else ("cancelled" if routed.cancelled else "failed")
             on_state_change("observing")
             on_heartbeat(
                 self.heartbeat.beat(
@@ -129,6 +138,10 @@ class AgentLoop:
             )
             observation = self.observer.observe(routed)
             on_tool_result(routed)
+            if session.cancellation_requested:
+                return self._cancel(plan, on_summary, on_state_change, on_heartbeat, step.title, step.tool_name)
+            if routed.cancelled:
+                return self._cancel(plan, on_summary, on_state_change, on_heartbeat, step.title, step.tool_name)
             if not observation.success:
                 plan.status = "failed"
                 on_state_change("failed")
@@ -180,6 +193,8 @@ class AgentLoop:
         if plan is None:
             on_state_change("idle")
             return LoopRunResult(summary="")
+        if session.cancellation_requested:
+            return self._cancel(plan, on_summary, on_state_change, on_heartbeat, None, result.tool_name)
 
         step = self._find_step(plan, result.input.get("__step_id"))
         if step:
@@ -213,6 +228,15 @@ class AgentLoop:
 
         for pending_step in plan.steps:
             if pending_step.status == "pending":
+                if session.cancellation_requested:
+                    return self._cancel(
+                        plan,
+                        on_summary,
+                        on_state_change,
+                        on_heartbeat,
+                        pending_step.title,
+                        pending_step.tool_name,
+                    )
                 request = self.tool_router.create_request(
                     tool_name=pending_step.tool_name,
                     args=pending_step.args,
@@ -248,7 +272,7 @@ class AgentLoop:
                     session.pending_approval = routed
                     return LoopRunResult(paused_for_approval=True)
 
-                pending_step.status = "completed" if routed.status == "success" else "failed"
+                pending_step.status = "completed" if routed.status == "success" else ("cancelled" if routed.cancelled else "failed")
                 on_state_change("observing")
                 on_heartbeat(
                     self.heartbeat.beat(
@@ -261,6 +285,15 @@ class AgentLoop:
                 )
                 observation = self.observer.observe(routed)
                 on_tool_result(routed)
+                if routed.cancelled:
+                    return self._cancel(
+                        plan,
+                        on_summary,
+                        on_state_change,
+                        on_heartbeat,
+                        pending_step.title,
+                        pending_step.tool_name,
+                    )
                 if not observation.success:
                     plan.status = "failed"
                     on_state_change("failed")
@@ -309,3 +342,25 @@ class AgentLoop:
     def _build_summary(self, plan: Plan) -> str:
         completed = sum(1 for step in plan.steps if step.status == "completed")
         return f"Completed {completed}/{len(plan.steps)} planned step(s)."
+
+    def _cancel(
+        self,
+        plan: Plan,
+        on_summary,
+        on_state_change,
+        on_heartbeat,
+        active_step_title: str | None,
+        active_tool: str | None,
+    ) -> LoopRunResult:
+        plan.status = "cancelled"
+        on_state_change("cancelled")
+        on_heartbeat(
+            self.heartbeat.stop(
+                "cancelled",
+                active_step_title=active_step_title,
+                active_tool=active_tool,
+                message="task cancelled",
+            )
+        )
+        on_summary("Task cancelled.")
+        return LoopRunResult(completed=False, summary="Task cancelled.")

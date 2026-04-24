@@ -36,6 +36,7 @@ class ToolResult:
     finished_at: str
     risk_level: str
     requires_approval: bool
+    cancelled: bool = False
     id: str = field(default_factory=lambda: f"toolres_{uuid4().hex[:12]}")
 
 

@@ -59,10 +59,23 @@ class SecurityConfig:
 
 
 @dataclass(frozen=True)
+class ModelsConfig:
+    provider: str = "openai"
+    default: str = "gpt-5.4-mini"
+    planner: str = "gpt-5.4-mini"
+    reflector: str = "gpt-5.4-mini"
+    allow_task_override: bool = True
+    remote_calls_enabled: bool = False
+    approval_required: bool = True
+    api_key_env_var: str = "OPENAI_API_KEY"
+
+
+@dataclass(frozen=True)
 class AgentConfig:
     permissions: PermissionsConfig = field(default_factory=PermissionsConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     security: SecurityConfig = field(default_factory=SecurityConfig)
+    models: ModelsConfig = field(default_factory=ModelsConfig)
 
 
 def load_config(path: str | Path = DEFAULT_CONFIG_PATH) -> AgentConfig:
@@ -83,6 +96,7 @@ def config_from_mapping(raw: dict[str, Any]) -> AgentConfig:
     permissions = raw.get("permissions", {})
     memory = raw.get("memory", {})
     security = raw.get("security", {})
+    models = raw.get("models", {})
 
     return AgentConfig(
         permissions=PermissionsConfig(
@@ -116,6 +130,16 @@ def config_from_mapping(raw: dict[str, Any]) -> AgentConfig:
             redact_model_calls=_bool_at(security, ("redact_model_calls",), True),
             redact_network=_bool_at(security, ("redact_network",), True),
             unknown_risk=_string_at(security, ("unknown_risk",), "high"),
+        ),
+        models=ModelsConfig(
+            provider=_string_at(models, ("provider",), "openai"),
+            default=_string_at(models, ("default",), "gpt-5.4-mini"),
+            planner=_string_at(models, ("planner",), "gpt-5.4-mini"),
+            reflector=_string_at(models, ("reflector",), "gpt-5.4-mini"),
+            allow_task_override=_bool_at(models, ("allow_task_override",), True),
+            remote_calls_enabled=_bool_at(models, ("remote_calls_enabled",), False),
+            approval_required=_bool_at(models, ("approval_required",), True),
+            api_key_env_var=_string_at(models, ("api_key_env_var",), "OPENAI_API_KEY"),
         ),
     )
 
@@ -187,4 +211,3 @@ def _parse_scalar(value: str) -> str | bool | int:
     ):
         return value[1:-1]
     return value
-

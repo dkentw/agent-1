@@ -8,8 +8,10 @@ from pathlib import Path
 
 from agent import __version__
 from agent.config import AgentConfig, load_config
+from agent.llm import LLMConfigurationError, LLMError, ModelService
 from agent.logging import SessionLogger, log_session_started
 from agent.memory import MemoryService
+from agent.models import ModelRegistry
 from agent.repl import run_repl
 from agent.session import create_session
 
@@ -28,6 +30,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--config",
         default="agent.yaml",
         help="Path to the workspace config file.",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Override the active model for this process.",
     )
 
     subcommands = parser.add_subparsers(dest="command")
@@ -54,6 +61,13 @@ def build_parser() -> argparse.ArgumentParser:
     feedback_bad = feedback_subcommands.add_parser("bad", help="Mark recent memories as not useful.")
     feedback_bad.add_argument("reason", help="Reason for the feedback.")
 
+    model_parser = subcommands.add_parser("model", help="Inspect available and active models.")
+    model_subcommands = model_parser.add_subparsers(dest="model_command")
+    model_subcommands.add_parser("show", help="Show the configured active model.")
+    model_subcommands.add_parser("list", help="List available registered models.")
+    model_test = model_subcommands.add_parser("test", help="Send a test prompt to the active provider.")
+    model_test.add_argument("prompt", help="Prompt to send to the model.")
+
     config_parser = subcommands.add_parser("config", help="Inspect configuration.")
     config_subcommands = config_parser.add_subparsers(dest="config_command")
     config_subcommands.add_parser("show", help="Show effective configuration.")
@@ -66,15 +80,24 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     config = load_config(args.config)
+    registry = ModelRegistry()
+
+    if args.model and not registry.validate(args.model):
+        print(f"Unknown model: {args.model}")
+        return 1
 
     if args.command is None:
-        return start_repl(config)
+        return start_repl(config, model_override=args.model)
 
     if args.command == "chat":
-        return start_repl(config)
+        return start_repl(config, model_override=args.model)
 
     if args.command == "run":
-        session = create_session(mode="one-shot")
+        session = create_session(
+            mode="one-shot",
+            model_provider=config.models.provider,
+            selected_model=args.model or config.models.default,
+        )
         logger = SessionLogger(session.log_path)
         log_session_started(logger, session)
         session.append_turn("user", args.task)
@@ -87,6 +110,7 @@ def main(argv: list[str] | None = None) -> int:
             },
         )
         print(f"Task received. Agent execution starts in Phase 4: {args.task}")
+        print(f"Model: {session.model_provider}/{session.selected_model}")
         print(f"Log: {session.log_path}")
         return 0
 
@@ -96,6 +120,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "feedback":
         return handle_feedback(args)
 
+    if args.command == "model":
+        return handle_model(args, config)
+
     if args.command == "config":
         return handle_config(args, config, Path(args.config))
 
@@ -103,8 +130,8 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def start_repl(config: AgentConfig) -> int:
-    return run_repl(config)
+def start_repl(config: AgentConfig, model_override: str | None = None) -> int:
+    return run_repl(config, model_override=model_override)
 
 
 def handle_memory(args: argparse.Namespace) -> int:
@@ -181,6 +208,44 @@ def handle_feedback(args: argparse.Namespace) -> int:
     return 0
 
 
+def handle_model(args: argparse.Namespace, config: AgentConfig) -> int:
+    registry = ModelRegistry()
+    if args.model_command in {None, "show"}:
+        print(f"provider: {config.models.provider}")
+        print(f"default: {config.models.default}")
+        print(f"planner: {config.models.planner}")
+        print(f"reflector: {config.models.reflector}")
+        print(f"remote_calls_enabled: {config.models.remote_calls_enabled}")
+        print(f"approval_required: {config.models.approval_required}")
+        return 0
+
+    if args.model_command == "list":
+        for model in registry.list_models(config.models.provider):
+            print(f"{model.name} [{', '.join(model.roles)}]")
+        return 0
+
+    if args.model_command == "test":
+        service = ModelService(config)
+        try:
+            response = service.generate(
+                model=args.model or config.models.default,
+                prompt=args.prompt,
+                system_prompt="Reply briefly. This is a connectivity test.",
+            )
+        except (LLMConfigurationError, LLMError) as exc:
+            print(str(exc))
+            return 1
+        print(f"provider: {response.provider}")
+        print(f"model: {response.model}")
+        if response.response_id:
+            print(f"response_id: {response.response_id}")
+        print(response.text)
+        return 0
+
+    print("Model commands: show, list")
+    return 1
+
+
 def handle_config(args: argparse.Namespace, config: AgentConfig, config_path: Path) -> int:
     if args.config_command == "show":
         print("permissions:")
@@ -196,6 +261,15 @@ def handle_config(args: argparse.Namespace, config: AgentConfig, config_path: Pa
         print(f"  auto_write: {config.memory.auto_write}")
         print(f"  require_review_for_user_preferences: {config.memory.require_review_for_user_preferences}")
         print(f"  block_secrets: {config.memory.block_secrets}")
+        print("models:")
+        print(f"  provider: {config.models.provider}")
+        print(f"  default: {config.models.default}")
+        print(f"  planner: {config.models.planner}")
+        print(f"  reflector: {config.models.reflector}")
+        print(f"  allow_task_override: {config.models.allow_task_override}")
+        print(f"  remote_calls_enabled: {config.models.remote_calls_enabled}")
+        print(f"  approval_required: {config.models.approval_required}")
+        print(f"  api_key_env_var: {config.models.api_key_env_var}")
         print("security:")
         print(f"  redact_logs: {config.security.redact_logs}")
         print(f"  redact_memory: {config.security.redact_memory}")

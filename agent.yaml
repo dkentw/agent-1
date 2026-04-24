@@ -20,4 +20,12 @@ security:
   redact_model_calls: true
   redact_network: true
   unknown_risk: high
-
+models:
+  provider: openai
+  default: gpt-5.4-mini
+  planner: gpt-5.4-mini
+  reflector: gpt-5.4-mini
+  allow_task_override: true
+  remote_calls_enabled: false
+  approval_required: true
+  api_key_env_var: OPENAI_API_KEY

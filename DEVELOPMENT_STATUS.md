@@ -2,9 +2,9 @@
 
 ## Status Summary
 
-Current status: Phase 7 complete.
+Current status: Phase 8 completed, with core model selection support already added.
 
-The project now contains product requirements, technical design, implementation phases, this development tracker, the Phase 0 Python package foundation, the Phase 1 interactive CLI skeleton, the Phase 2 workspace detection layer, the Phase 3 tool runtime and permission layer, the Phase 4 basic agent loop, the Phase 4.5 heartbeat and liveness layer, the Phase 5 file editing and diff UX, the Phase 6 local memory MVP, and the Phase 7 reflection and self-learning layer.
+The project now contains product requirements, technical design, implementation phases, this development tracker, the Phase 0 Python package foundation, the Phase 1 interactive CLI skeleton, the Phase 2 workspace detection layer, the Phase 3 tool runtime and permission layer, the Phase 4 basic agent loop, the Phase 4.5 heartbeat and liveness layer, the Phase 5 file editing and diff UX, the Phase 6 local memory MVP, the Phase 7 reflection and self-learning layer, and a core model registry and selection component.
 
 ## Source Documents
 
@@ -34,7 +34,7 @@ The project now contains product requirements, technical design, implementation 
 | 5 | File Editing and Diff UX | Completed | Added file write support, diff preview before approval, pending edit state, `/diff`, `/undo`, and edit approval flow. |
 | 6 | Local Memory MVP | Completed | Added SQLite memory service, CLI memory CRUD, REPL memory commands, retrieval during task setup, and memory usage logging. |
 | 7 | Reflection and Self-Learning | Completed | Added reflection service, safe memory proposals, memory confidence updates, top-level feedback commands, and REPL feedback for current task memories. |
-| 8 | Better Interactive Behavior | Not started | Add streaming polish, multiline input, autocomplete, interruption flow. |
+| 8 | Better Interactive Behavior | Completed | Added multiline continuation, compact rendering, `/history`, `/cancel`, slash-command suggestions, richer follow-up reuse, heuristic-only executable follow-up resolution, live heartbeat rendering, and closed the `run_repl` boundary decision. |
 | 9 | Evaluation Harness | Not started | Add scenarios, metrics, repeatable evaluation runs. |
 | 10 | Hardening and Release Readiness | Not started | Add regression tests, documentation, install flow, cleanup. |
 
@@ -110,18 +110,48 @@ The project now contains product requirements, technical design, implementation 
 - Added `agent feedback good|bad "reason"` commands.
 - Added `/feedback good|bad <reason>` in the REPL.
 - Added Phase 7 reflection and feedback tests.
+- Added typed model config and default model settings.
+- Added a local model registry in `agent/models.py`.
+- Added session-level active model tracking.
+- Added `agent model show`, `agent model list`, and `--model <name>`.
+- Added `/model`, `/model list`, and `/model <name>` in the REPL.
+- Added model config, CLI, and REPL tests.
+- Added the provider adapter interface and model service in `agent/llm.py`.
+- Added the first provider-backed adapter using the OpenAI Responses API.
+- Added `agent model test "prompt"` and `/model test <prompt>`.
+- Added env-var API key loading through `models.api_key_env_var`.
+- Added local credential storage in `agent/credentials.py`.
+- Added `/model key setup`, `/model key unlock`, `/model key clear`, and hashed-PIN credential protection.
+- Updated credential handling to use one global credential-store PIN for all stored provider keys.
+- Split PIN initialization into a dedicated `/setup-pin` command so credential setup only uses an existing PIN.
+- Refactored slash commands into plugin-style command components under `agent/commands/` with a shared registry.
+- Moved command-family behavior out of `Repl` into `agent/commands/services.py` for help, status, memory, and model flows.
+- Added cancellable `shell.run` execution, richer session references for follow-up resolution, and extracted control/edit command services.
+- Moved secure credential prompt handling out of `Repl` into a dedicated command service and suppressed duplicate heartbeat lines.
+- Moved follow-up resolution out of `Repl` into a dedicated service and broadened it to file/task/shell/test references.
+- Moved task/approval/display orchestration out of `Repl` into a dedicated task interaction service.
+- Added model-call redaction before provider requests.
+- Started Phase 8 better interactive behavior.
+- Added multiline input continuation in the REPL.
+- Added compact REPL rendering in `agent/rendering.py`.
+- Added `/history` for recent input history.
+- Added `/cancel` for pending approval or active task state.
+- Added slash-command suggestions for near matches.
+- Added follow-up reuse such as `read it again`, `show the diff`, `undo that`, and `run that again`.
+- Added cancellation-request tracking on `Ctrl+C` and loop cancellation exits.
+- Added Phase 8 REPL tests for the new interaction patterns.
+- Added richer live heartbeat rendering so long-running work shows compact state, step, tool, elapsed time, and cancel hints in both the main task flow and `/status`.
 
 ## Active Work
 
-No active implementation work is currently in progress.
+Active implementation work: none inside Phase 8. Next work starts with model-backed planner and reflector integration, then Phase 9.
 
 ## Next Implementation Steps
 
-1. Start Phase 8 better interactive behavior.
-2. Add streaming polish and compact tool activity rendering.
-3. Add multiline input, history, and slash-command autocomplete.
-4. Add stronger interruption handling for active tasks.
-5. Add follow-up prompt handling using session context.
+1. Integrate provider-backed model calls into planner and reflector behind the existing adapter boundary.
+2. Start Phase 9 evaluation harness work.
+3. Harden credential storage by moving away from the current custom local crypto scheme.
+4. Replace `shell=True` with an argv-based shell runner where possible.
 
 ## MVP Scope
 
@@ -179,6 +209,10 @@ Required before any meaningful tool execution:
 | Shell isolation model | Open | Decide between direct subprocess, sandboxed subprocess, or container. |
 | File edit strategy | Open | Decide between patch-only edits, full-file writes, or both. |
 | Memory write policy | Open | Decide whether automatic memory writes require review by default. |
+| Follow-up resolution for executable actions | Decided | Keep it heuristic-only. Model-backed interpretation may exist later only as a non-executing suggestion layer. |
+| `run_repl` terminal loop boundary | Decided | Keep the terminal loop in `agent/repl.py` rather than moving it to a thinner CLI session runner. |
+| Credential storage backend | Tracked | Replace the custom PIN-based crypto with a standard keychain or audited AEAD-backed store. |
+| Shell execution boundary | Tracked | Replace `shell=True` with argv-based execution for the default path when practical. |
 
 ## Change Log
 
@@ -200,3 +234,20 @@ Required before any meaningful tool execution:
 | 2026-04-24 | Completed Phase 5 verification: file editing and diff UX with 34 passing tests through `uv run --extra dev pytest`. |
 | 2026-04-24 | Completed Phase 6 verification: local memory MVP with 39 passing tests through `uv run --extra dev pytest`. |
 | 2026-04-24 | Completed Phase 7 verification: reflection and self-learning with 45 passing tests through `uv run --extra dev pytest`. |
+| 2026-04-24 | Added core model registry and selection support with 49 passing tests through `uv run --extra dev pytest`. |
+| 2026-04-24 | Started Phase 8 interactive-behavior work with multiline input, history, command suggestions, follow-up file reuse, and 55 passing tests through `uv run --extra dev pytest`. |
+| 2026-04-24 | Extended Phase 8 with compact rendering, `/cancel`, broader follow-up resolution, and loop cancellation exits with 60 passing tests through `uv run --extra dev pytest`. |
+| 2026-04-24 | Added the LLM adapter interface, OpenAI provider adapter, env-var API key loading, and model test commands with 66 passing tests through `uv run --extra dev pytest`. |
+| 2026-04-24 | Added local credential storage with hashed PIN protection and slash-command key setup/unlock flow with 72 passing tests through `uv run --extra dev pytest`. |
+| 2026-04-24 | Updated credential setup to use one global PIN for all stored provider keys with 74 passing tests through `uv run --extra dev pytest`. |
+| 2026-04-24 | Split global PIN initialization into `/setup-pin` and kept `/model key setup` focused on provider credentials. |
+| 2026-04-24 | Refactored REPL slash commands into plugin-style modules under `agent/commands/`. |
+| 2026-04-24 | Moved command-family behavior out of `Repl` into dedicated command services while keeping the REPL as the I/O and loop coordinator. |
+| 2026-04-24 | Added cancellable `shell.run`, session reference tracking for richer follow-ups, and extracted control/edit command services with 78 passing tests through `uv run --extra dev pytest`. |
+| 2026-04-24 | Moved secure prompt handling into a dedicated service and suppressed duplicate heartbeat lines with 79 passing tests through `uv run --extra dev pytest`. |
+| 2026-04-24 | Moved follow-up resolution into a dedicated service and broadened it to file/task/shell/test references with 81 passing tests through `uv run --extra dev pytest`. |
+| 2026-04-24 | Moved task/approval/display orchestration into a dedicated task interaction service with 81 passing tests through `uv run --extra dev pytest`. |
+| 2026-04-24 | Added richer live heartbeat rendering for long-running work, including compact progress summaries in task output and `/status`. |
+| 2026-04-24 | Decided that follow-up resolution stays heuristic-only for executable actions. |
+| 2026-04-24 | Decided that the `run_repl` terminal loop stays in `agent/repl.py`, closing the remaining Phase 8 boundary decision. |
+| 2026-04-24 | Tracked credential storage and shell execution hardening items as explicit next-step work. |

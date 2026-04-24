@@ -6,7 +6,7 @@ import re
 
 
 SENSITIVE_PATTERNS = (
-    re.compile(r"-----BEGIN [A-Z ]+PRIVATE KEY-----"),
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     re.compile(r"\bAIza[0-9A-Za-z\-_]{35}\b"),
     re.compile(r"\b(?:sk|rk)-[A-Za-z0-9]{16,}\b"),
@@ -22,3 +22,10 @@ def contains_sensitive_data(*values: str) -> bool:
             if pattern.search(value):
                 return True
     return False
+
+
+def redact_sensitive_data(value: str) -> str:
+    redacted = value
+    for pattern in SENSITIVE_PATTERNS:
+        redacted = pattern.sub("[REDACTED_SECRET]", redacted)
+    return redacted

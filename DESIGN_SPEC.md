@@ -65,7 +65,7 @@ Responsibilities:
 - start interactive mode when `agent` is run without arguments
 - route `agent chat` to the interactive REPL
 - route `agent run "task"` to one-shot execution
-- expose memory, feedback, eval, and config commands
+- expose memory, feedback, model, eval, and config commands
 
 Command surface:
 
@@ -79,6 +79,8 @@ agent memory show <id>
 agent memory delete <id>
 agent feedback good "reason"
 agent feedback bad "reason"
+agent model show
+agent model list
 agent eval <scenario>
 agent config show
 agent config edit
@@ -98,6 +100,7 @@ Responsibilities:
 - handle `Ctrl+C` interruption
 - prompt for approvals
 - display diffs, plans, logs, and final summaries
+- own the terminal input loop through `run_repl`
 
 Prompt format:
 
@@ -126,6 +129,7 @@ Slash commands:
 ```
 
 The REPL should not directly perform agent work. It should create session events and call the agent runtime.
+The terminal loop should remain in `agent/repl.py` so prompt handling, multiline input, secure input mode, and interrupt behavior stay close to the interactive surface they control.
 
 ### 4.3 Session Manager
 
@@ -222,7 +226,25 @@ permissions:
 memory:
   auto_write: true
   require_review_for_user_preferences: true
+models:
+  provider: openai
+  default: gpt-5.4-mini
+  planner: gpt-5.4-mini
+  reflector: gpt-5.4-mini
+  allow_task_override: true
+  remote_calls_enabled: false
 ```
+
+### 4.5.1 Model Registry
+
+Module: `agent/models.py`
+
+Responsibilities:
+
+- define the locally known model catalog
+- validate configured and requested model names
+- expose role hints such as default, planner, reflector, and coding
+- provide a stable selection surface before real provider clients are wired in
 
 ### 4.6 Agent Loop
 
@@ -429,6 +451,15 @@ Initial tools:
 - `tests.py`: run detected test commands
 - `http.py`: optional network tool, disabled or ask-by-default
 
+### 4.10.1 Model Boundary
+
+Provider-backed model calls must be isolated behind a dedicated boundary so that:
+
+- prompts can be redacted before leaving the machine
+- remote-call approval policy can be enforced consistently
+- provider credentials are never scattered across planner or reflector code
+- model selection can be changed without rewriting task logic
+
 Tool result schema:
 
 ```text
@@ -621,6 +652,7 @@ Responsibilities:
 - format heartbeat status
 - format approvals
 - format diffs and summaries
+- format active provider and model state
 - keep output compact and readable
 
 The renderer should be replaceable so non-interactive output can stay clean.
@@ -730,6 +762,32 @@ User enters prompt
   -> Renderer prints final summary
   -> REPL waits for next prompt
 ```
+
+### 6.1.1 Follow-Up Resolution
+
+Follow-up resolution for executable actions remains heuristic-only.
+
+That includes conversational inputs such as:
+
+```text
+run that again
+open that again
+show the diff
+undo that
+run that test again
+```
+
+The runtime should resolve these only from explicit session references such as:
+
+- last active path
+- last shell command
+- last test command
+- last approval target
+- last diff target
+
+If no clear local reference exists, the agent should not guess. It should stop and require an explicit user instruction.
+
+Model-backed follow-up interpretation may be added later only as a non-executing suggestion layer. It must not directly trigger tool execution, file edits, shell commands, approvals, or credential actions.
 
 ### 6.2 One-Shot Task Flow
 
@@ -918,10 +976,13 @@ Manual tests:
 - Require explicit approval for file writes, shell commands with side effects, and high-privilege instructions.
 - Redact sensitive data before logs, memory, model calls, and network egress.
 - Store session logs as JSONL to support debugging and evaluation.
+- Keep follow-up resolution heuristic-only for executable actions.
+- Keep the `run_repl` terminal loop in `agent/repl.py`.
 
 ## 11. Open Technical Decisions
 
 - Which model provider should power planning and reflection?
+- Which provider client should be added first behind the existing model registry?
 - Should shell execution use direct subprocesses, a sandbox, or containers?
 - Should persistent memory require review by default?
 - Should file edits use patch application only, full-file writes, or both?

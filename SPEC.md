@@ -7,6 +7,7 @@ Build a self-learning AI agent whose default input interface is a command-line i
 ## 2. Goals
 
 - Provide a CLI-first user experience for one-shot and interactive agent usage.
+- Treat model selection and model-provider control as core runtime capabilities.
 - Support task planning, execution, observation, reflection, and memory.
 - Treat security, privacy, and user approval as hard product requirements.
 - Store reusable lessons from successes, failures, and user feedback.
@@ -39,6 +40,8 @@ agent memory show <id>
 agent memory delete <id>
 agent feedback good "reason"
 agent feedback bad "reason"
+agent model show
+agent model list
 agent eval <scenario>
 agent config show
 agent config edit
@@ -106,6 +109,7 @@ Command behavior:
 - `/exit` ends the session.
 - `/clear` clears visible conversation context while preserving persistent memory.
 - `/status` shows workspace, model, permission mode, active task, and Git state.
+- `/model` shows the active provider and model and allows session-level model switching when policy allows.
 - `/plan` shows the current plan and completed steps.
 - `/memory` shows memories used in the current session.
 - `/permissions` shows the current approval policy.
@@ -189,6 +193,7 @@ Responsibilities:
 - Identify dependencies, risks, and unknowns.
 - Decide when to ask the user for clarification.
 - Revise the plan based on observations.
+- Use the configured planning model when model-backed planning is enabled.
 
 ### 5.3 Executor
 
@@ -216,6 +221,7 @@ Responsibilities:
 - Identify useful lessons from the task.
 - Distinguish reusable learning from incidental details.
 - Propose memory writes with confidence scores.
+- Use the configured reflection model when model-backed reflection is enabled.
 
 ### 5.6 Memory Writer
 
@@ -226,20 +232,32 @@ Responsibilities:
 - Deduplicate similar memories.
 - Attach metadata such as source task, confidence, timestamp, and scope.
 
+### 5.7 Model Runtime
+
+Responsibilities:
+
+- load model-provider configuration from `agent.yaml`
+- track default, planner, and reflector model assignments
+- validate requested model names against a registry
+- allow session-level model overrides when policy allows
+- keep model calls behind sensitive-data redaction and approval rules
+- expose the active model in CLI status and logs
+
 ## 6. Agent Loop
 
 For each task:
 
 1. Accept input from the interactive CLI or one-shot command.
 2. Load configuration, permissions, tools, and relevant memories.
-3. Generate an initial plan.
-4. Execute the next safe step.
-5. Observe tool output and environment changes.
-6. Update the plan if needed.
-7. Continue until the task succeeds, fails, or needs user input.
-8. Reflect on the result.
-9. Store useful, specific, reusable memories.
-10. Return a concise final summary to the user.
+3. Resolve the active provider and model selection for the task.
+4. Generate an initial plan.
+5. Execute the next safe step.
+6. Observe tool output and environment changes.
+7. Update the plan if needed.
+8. Continue until the task succeeds, fails, or needs user input.
+9. Reflect on the result.
+10. Store useful, specific, reusable memories.
+11. Return a concise final summary to the user.
 
 ### 6.1 Loop States
 
@@ -343,6 +361,18 @@ Memory retrieval should consider:
 - scope match
 - prior usefulness
 - user approval
+
+### 7.6 Model Selection
+
+The agent must support:
+
+- a configured default model
+- separate planner and reflector model assignments
+- session-level model overrides in the interactive CLI
+- process-level model override for one-shot runs
+- model inspection commands in the CLI
+
+Remote model calls must remain subject to redaction, approval policy, and provider-specific credentials.
 
 ### 7.5 Memory Safety
 
@@ -532,6 +562,7 @@ Required controls:
 - scan tool inputs and outputs for common secret patterns
 - redact detected secrets from logs and UI summaries
 - block memory writes containing secrets
+- redact local content before model-provider calls
 - block network calls containing secrets unless explicitly approved
 - warn before reading known sensitive files such as `.env`, private keys, credential stores, and production dumps
 - preserve local-only processing when possible
@@ -715,6 +746,7 @@ The first usable version must:
 - Add automatic memory proposals.
 - Add feedback commands.
 - Add memory confidence updates.
+- Add model runtime and selection controls as a core component before provider-backed planning.
 
 ### Milestone 6: Evaluation
 
@@ -735,6 +767,7 @@ The first usable version must:
 - The agent asks before file writes, deletes, network calls, or package installs.
 - The agent requires approval before any high-privilege instruction.
 - The agent redacts secrets before logging, memory writes, model calls, or network calls.
+- The user can inspect the active model and switch models within the configured policy.
 - The agent denies attempts to store or exfiltrate secrets by default.
 - The agent streams command execution and file activity clearly in the terminal.
 - The CLI shows heartbeat status for long-running work.

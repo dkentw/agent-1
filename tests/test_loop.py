@@ -39,3 +39,28 @@ def test_loop_creates_plan_and_completes_read_only_task(tmp_path):
     assert events["heartbeats"][0].loop_state == "loading_context"
     assert events["heartbeats"][-1].loop_state == "completed"
     assert session.learned_memories
+
+
+def test_loop_stops_when_cancellation_requested(tmp_path):
+    (tmp_path / "README.md").write_text("hello\n", encoding="utf-8")
+    session = create_session(workspace_path=tmp_path, sessions_dir=tmp_path / "sessions")
+    loop = AgentLoop(ToolRouter(AgentConfig()), MemoryService(tmp_path / "memory.sqlite"))
+    events = {"plans": [], "tools": [], "summaries": [], "states": [], "approvals": [], "heartbeats": [], "memories": []}
+
+    result = loop.run_task(
+        session=session,
+        task_input='read "README.md"',
+        on_plan=lambda plan: (events["plans"].append(plan), setattr(session, "cancellation_requested", True)),
+        on_tool_result=events["tools"].append,
+        on_approval=events["approvals"].append,
+        on_summary=events["summaries"].append,
+        on_state_change=events["states"].append,
+        on_heartbeat=events["heartbeats"].append,
+        on_memories_loaded=events["memories"].append,
+        on_memories_learned=events["memories"].append,
+    )
+
+    assert result.completed is False
+    assert result.summary == "Task cancelled."
+    assert not events["tools"]
+    assert events["states"][-1] == "cancelled"

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from agent.sensitive_data import redact_sensitive_data
 from agent.session import SessionState, utc_now_iso
 
 
@@ -18,7 +19,7 @@ class SessionLogger:
         event = {
             "type": event_type,
             "created_at": utc_now_iso(),
-            "payload": payload or {},
+            "payload": _redact_payload(payload or {}),
         }
         with self.log_path.open("a", encoding="utf-8") as log_file:
             log_file.write(json.dumps(event, ensure_ascii=True, sort_keys=True))
@@ -42,3 +43,15 @@ def log_session_started(logger: SessionLogger, session: SessionState) -> None:
             },
         },
     )
+
+
+def _redact_payload(value: Any) -> Any:
+    if isinstance(value, str):
+        return redact_sensitive_data(value)
+    if isinstance(value, dict):
+        return {key: _redact_payload(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_redact_payload(item) for item in value]
+    if isinstance(value, tuple):
+        return [_redact_payload(item) for item in value]
+    return value

@@ -267,6 +267,7 @@ Goal: make the REPL feel like a durable coding-agent interface.
 
 Deliverables:
 
+- model selection UX polish
 - streaming progress events
 - compact tool activity rendering
 - multi-line input support
@@ -274,12 +275,14 @@ Deliverables:
 - autocomplete for slash commands
 - `Ctrl+C` task interruption flow
 - follow-up question support using session context
+- heuristic-only follow-up resolution for executable actions
 
 Exit criteria:
 
 - long-running work streams progress
 - interrupted tasks can stop cleanly
 - follow-up prompts can refer to previous commands or files
+- ambiguous executable follow-ups do not guess and require explicit user input
 - plain terminal usage remains clear
 
 ## Phase 9: Evaluation Harness
@@ -321,6 +324,8 @@ Deliverables:
 - improved error messages
 - shell timeout controls
 - workspace path enforcement
+- credential storage migration to a standard keychain or audited AEAD-backed store
+- argv-based shell execution path for the default runner
 - security regression tests
 - secret redaction regression tests
 - high-privilege approval regression tests
@@ -338,6 +343,7 @@ Exit criteria:
 - raw secrets do not appear in logs, memory, or evaluation artifacts
 - logs and memories are inspectable
 - the agent is usable as a daily interactive CLI assistant
+- residual hardening items are tracked and addressed before release
 
 ## Suggested MVP Boundary
 
@@ -361,3 +367,18 @@ MVP capabilities:
 Self-learning is meaningfully useful after Phase 7.
 
 The Claude Code-style interactive experience becomes credible after Phase 8.
+
+## Cross-Cutting: Model Runtime
+
+This is a core component rather than a late add-on.
+
+Required foundation:
+
+- typed model config in `agent.yaml`
+- model registry and validation
+- session-level active model state
+- process-level model override
+- CLI and REPL model inspection
+- redaction and approval boundary before any remote model call
+
+Provider-backed planning and reflection should build on this foundation instead of making direct ad hoc API calls.

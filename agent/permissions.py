@@ -15,15 +15,15 @@ class PermissionDecision:
 
 
 def classify_risk(tool_name: str, args: dict[str, object]) -> str:
+    path = _tool_path(args)
+    if _looks_sensitive_path(path):
+        return "high"
+
     if tool_name in {"filesystem.read", "filesystem.list", "filesystem.stat", "git.status", "git.diff"}:
         return "low"
     if tool_name in {"filesystem.write", "shell.run", "tests.run"}:
         return "medium"
     if tool_name in {"filesystem.delete", "network.request", "credentials.read"}:
-        return "high"
-
-    path = str(args.get("path", ""))
-    if any(token in path.lower() for token in (".env", ".pem", ".key", "id_rsa", "credentials")):
         return "high"
     return "high"
 
@@ -75,3 +75,16 @@ def _expected_effect(tool_name: str) -> str:
     if tool_name.startswith("shell."):
         return "run a shell command"
     return "perform a tool action"
+
+
+def _tool_path(args: dict[str, object]) -> str:
+    for key in ("path", "repo_path", "command"):
+        value = args.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+def _looks_sensitive_path(path: str) -> bool:
+    lowered = path.lower()
+    return any(token in lowered for token in (".env", ".pem", ".key", "id_rsa", "id_ed25519", "credentials"))

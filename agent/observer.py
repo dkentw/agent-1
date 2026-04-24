@@ -15,9 +15,10 @@ class Observation:
 
 class Observer:
     def observe(self, result: ToolResult) -> Observation:
+        if result.status == "cancelled" or result.cancelled:
+            return Observation(False, f"{result.tool_name} cancelled.")
         if result.status == "success":
             if result.stdout:
                 return Observation(True, f"{result.tool_name} returned output.")
             return Observation(True, f"{result.tool_name} completed.")
         return Observation(False, f"{result.tool_name} failed: {result.stderr or 'unknown error'}")
-

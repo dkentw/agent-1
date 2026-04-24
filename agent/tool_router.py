@@ -11,21 +11,27 @@ from agent.permissions import build_approval_request, classify_risk, decide_perm
 from agent.tool_models import ApprovalRequest, ToolRequest, ToolResult
 from agent.tools.filesystem import list_directory, preview_write, read_file, stat_path, write_file
 from agent.tools.git import git_diff, git_status
+from agent.tools.shell import run_shell_command
 
 
-ToolHandler = Callable[[Path, dict[str, object]], dict[str, object]]
+ToolHandler = Callable[[Path, dict[str, object], Callable[[], bool] | None], dict[str, object]]
 
 
 class ToolRouter:
     def __init__(self, config: AgentConfig):
         self.config = config
         self.handlers: dict[str, ToolHandler] = {
-            "filesystem.read": lambda workspace, args: read_file(workspace, str(args["path"])),
-            "filesystem.list": lambda workspace, args: list_directory(workspace, str(args.get("path", "."))),
-            "filesystem.stat": lambda workspace, args: stat_path(workspace, str(args["path"])),
-            "filesystem.write": lambda workspace, args: write_file(workspace, str(args["path"]), str(args["content"])),
-            "git.status": lambda workspace, args: git_status(workspace),
-            "git.diff": lambda workspace, args: git_diff(workspace),
+            "filesystem.read": lambda workspace, args, is_cancelled=None: read_file(workspace, str(args["path"])),
+            "filesystem.list": lambda workspace, args, is_cancelled=None: list_directory(workspace, str(args.get("path", "."))),
+            "filesystem.stat": lambda workspace, args, is_cancelled=None: stat_path(workspace, str(args["path"])),
+            "filesystem.write": lambda workspace, args, is_cancelled=None: write_file(workspace, str(args["path"]), str(args["content"])),
+            "git.status": lambda workspace, args, is_cancelled=None: git_status(workspace),
+            "git.diff": lambda workspace, args, is_cancelled=None: git_diff(workspace),
+            "shell.run": lambda workspace, args, is_cancelled=None: run_shell_command(
+                workspace,
+                str(args["command"]),
+                is_cancelled=is_cancelled,
+            ),
         }
 
     def create_request(
@@ -61,17 +67,19 @@ class ToolRouter:
             return build_approval_request(request)
         return self.execute(request)
 
-    def execute(self, request: ToolRequest) -> ToolResult:
+    def execute(self, request: ToolRequest, is_cancelled: Callable[[], bool] | None = None) -> ToolResult:
         if request.tool_name not in self.handlers:
             raise KeyError(f"unknown tool: {request.tool_name}")
 
         started_at = _utc_now_iso()
-        raw = self.handlers[request.tool_name](request.workspace_path, request.args)
+        raw = self.handlers[request.tool_name](request.workspace_path, request.args, is_cancelled)
         finished_at = _utc_now_iso()
+        cancelled = bool(raw.get("artifacts", {}).get("cancelled"))
+        status = "cancelled" if cancelled else ("success" if not raw.get("stderr") else "error")
         return ToolResult(
             tool_name=request.tool_name,
             input=request.args,
-            status="success" if not raw.get("stderr") else "error",
+            status=status,
             stdout=str(raw.get("stdout", "")),
             stderr=str(raw.get("stderr", "")),
             artifacts=dict(raw.get("artifacts", {})),
@@ -79,6 +87,7 @@ class ToolRouter:
             finished_at=finished_at,
             risk_level=request.risk_level,
             requires_approval=request.risk_level != "low",
+            cancelled=cancelled,
         )
 
 
