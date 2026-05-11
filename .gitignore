@@ -7,4 +7,6 @@ __pycache__/
 dist/
 build/
 data/sessions/*.jsonl
+.omc/
+.claude/
 

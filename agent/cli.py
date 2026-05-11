@@ -73,6 +73,33 @@ def build_parser() -> argparse.ArgumentParser:
     config_subcommands.add_parser("show", help="Show effective configuration.")
     config_subcommands.add_parser("edit", help="Print the config path to edit.")
 
+    eval_parser = subcommands.add_parser("eval", help="Run evaluation scenarios.")
+    eval_parser.add_argument(
+        "scenario_or_cmd",
+        nargs="?",
+        default=None,
+        metavar="SCENARIO",
+        help="Scenario ID or path to .json file, or: list, scenarios, compare.",
+    )
+    eval_parser.add_argument(
+        "extra",
+        nargs="*",
+        metavar="ARGS",
+        help="Extra args (for compare: <run-id-a> <run-id-b>).",
+    )
+    eval_parser.add_argument(
+        "--no-memory",
+        action="store_true",
+        dest="no_memory",
+        help="Disable memory retrieval for this run.",
+    )
+    eval_parser.add_argument(
+        "--compare",
+        action="store_true",
+        dest="compare_runs",
+        help="Run with and without memory and compare results.",
+    )
+
     return parser
 
 
@@ -125,6 +152,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "config":
         return handle_config(args, config, Path(args.config))
+
+    if args.command == "eval":
+        return handle_eval(args, config)
 
     parser.print_help()
     return 0
@@ -244,6 +274,119 @@ def handle_model(args: argparse.Namespace, config: AgentConfig) -> int:
 
     print("Model commands: show, list")
     return 1
+
+
+def handle_eval(args: argparse.Namespace, config: AgentConfig) -> int:
+    from agent.eval.runner import EvalRunner
+    from agent.eval.scenario import BUILTIN_SCENARIOS, resolve_scenario
+    from agent.eval.store import EvalStore
+
+    cmd = args.scenario_or_cmd
+
+    if cmd is None:
+        print("Usage: agent eval <scenario>  |  list  |  scenarios  |  compare <id-a> <id-b>")
+        return 0
+
+    if cmd == "scenarios":
+        for s in BUILTIN_SCENARIOS:
+            tags = f"  [{', '.join(s.tags)}]" if s.tags else ""
+            print(f"{s.id:<24} {s.name}{tags}")
+        return 0
+
+    if cmd == "list":
+        store = EvalStore()
+        runs = store.list()
+        if not runs:
+            print("No evaluation runs stored.")
+            return 0
+        for run in runs:
+            memory_label = "memory" if run.with_memory else "no-memory"
+            rate = f"{run.completion_rate * 100:.0f}%"
+            print(f"{run.run_id}  {run.scenario_id:<24} {memory_label:<10} {rate}  {run.started_at[:19]}")
+        return 0
+
+    if cmd == "compare":
+        if len(args.extra) < 2:
+            print("Usage: agent eval compare <run-id-a> <run-id-b>")
+            return 1
+        store = EvalStore()
+        run_a = store.get(args.extra[0])
+        run_b = store.get(args.extra[1])
+        if run_a is None:
+            print(f"Run not found: {args.extra[0]}")
+            return 1
+        if run_b is None:
+            print(f"Run not found: {args.extra[1]}")
+            return 1
+        _print_comparison(run_a, run_b)
+        return 0
+
+    scenario = resolve_scenario(cmd)
+    if scenario is None:
+        print(f"Unknown scenario: {cmd}  (use 'agent eval scenarios' to list builtins)")
+        return 1
+
+    runner = EvalRunner(config)
+    store = EvalStore()
+
+    if args.compare_runs:
+        print(f"Running scenario: {scenario.name} ({scenario.id})")
+        print("Pass 1: without memory")
+        run_no_mem = runner.run(scenario, with_memory=False)
+        store.save(run_no_mem)
+        print("Pass 2: with memory")
+        run_mem = runner.run(scenario, with_memory=True)
+        store.save(run_mem)
+        _print_comparison(run_no_mem, run_mem)
+        return 0
+
+    with_memory = not args.no_memory
+    print(f"Running scenario: {scenario.name} ({scenario.id})")
+    run = runner.run(scenario, with_memory=with_memory)
+    store.save(run)
+    _print_run(run)
+    return 0
+
+
+def _print_run(run) -> None:
+    from agent.eval.metrics import EvalRunMetrics
+
+    memory_label = "with memory" if run.with_memory else "no memory"
+    print(f"\n[{memory_label}]")
+    for i, t in enumerate(run.task_metrics, 1):
+        status = "ok" if t.completed else "fail"
+        print(
+            f"  task {i}/{run.tasks_total}: {t.task_input!r:<30}"
+            f"  {status:<4}  steps {t.steps_completed}/{t.steps_total}"
+            f"  {t.duration_seconds:.3f}s"
+            f"  mem-hits={t.memory_hits}"
+        )
+    print(
+        f"\n  completion   {run.tasks_completed}/{run.tasks_total}"
+        f" ({run.completion_rate * 100:.0f}%)"
+    )
+    print(f"  tool failures     {run.total_tool_failures}")
+    print(f"  approval prompts  {run.total_approval_prompts}")
+    print(f"  memory hits       {run.total_memory_hits}")
+    print(f"  memories learned  {run.total_memories_learned}")
+    print(f"  total duration    {run.total_duration_seconds:.3f}s")
+    print(f"\n  run id: {run.run_id}")
+
+
+def _print_comparison(run_a, run_b) -> None:
+    def _label(r) -> str:
+        return "memory" if r.with_memory else "no-memory"
+
+    print(f"\n{'metric':<24}  {_label(run_a):<12}  {_label(run_b):<12}")
+    print("-" * 52)
+    print(f"{'completion rate':<24}  {run_a.completion_rate * 100:>10.0f}%  {run_b.completion_rate * 100:>10.0f}%")
+    print(f"{'tool failures':<24}  {run_a.total_tool_failures:>11}  {run_b.total_tool_failures:>11}")
+    print(f"{'approval prompts':<24}  {run_a.total_approval_prompts:>11}  {run_b.total_approval_prompts:>11}")
+    print(f"{'memory hits':<24}  {run_a.total_memory_hits:>11}  {run_b.total_memory_hits:>11}")
+    print(f"{'memories learned':<24}  {run_a.total_memories_learned:>11}  {run_b.total_memories_learned:>11}")
+    print(f"{'duration (s)':<24}  {run_a.total_duration_seconds:>11.3f}  {run_b.total_duration_seconds:>11.3f}")
+    print(f"\n  {_label(run_a)} run: {run_a.run_id}")
+    print(f"  {_label(run_b)} run: {run_b.run_id}")
 
 
 def handle_config(args: argparse.Namespace, config: AgentConfig, config_path: Path) -> int:

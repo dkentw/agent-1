@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-Current status: Phase 8 completed, with core model selection support already added.
+Current status: Phase 9 completed.
 
 The project now contains product requirements, technical design, implementation phases, this development tracker, the Phase 0 Python package foundation, the Phase 1 interactive CLI skeleton, the Phase 2 workspace detection layer, the Phase 3 tool runtime and permission layer, the Phase 4 basic agent loop, the Phase 4.5 heartbeat and liveness layer, the Phase 5 file editing and diff UX, the Phase 6 local memory MVP, the Phase 7 reflection and self-learning layer, and a core model registry and selection component.
 
@@ -35,7 +35,7 @@ The project now contains product requirements, technical design, implementation 
 | 6 | Local Memory MVP | Completed | Added SQLite memory service, CLI memory CRUD, REPL memory commands, retrieval during task setup, and memory usage logging. |
 | 7 | Reflection and Self-Learning | Completed | Added reflection service, safe memory proposals, memory confidence updates, top-level feedback commands, and REPL feedback for current task memories. |
 | 8 | Better Interactive Behavior | Completed | Added multiline continuation, compact rendering, `/history`, `/cancel`, slash-command suggestions, richer follow-up reuse, heuristic-only executable follow-up resolution, live heartbeat rendering, and closed the `run_repl` boundary decision. |
-| 9 | Evaluation Harness | Not started | Add scenarios, metrics, repeatable evaluation runs. |
+| 9 | Evaluation Harness | Completed | Added scenario format, eval runner, temp workspace fixtures, SQLite metrics store, and CLI eval commands with comparison support. |
 | 10 | Hardening and Release Readiness | Not started | Add regression tests, documentation, install flow, cleanup. |
 
 ## Completed Work
@@ -144,12 +144,12 @@ The project now contains product requirements, technical design, implementation 
 
 ## Active Work
 
-Active implementation work: none inside Phase 8. Next work starts with model-backed planner and reflector integration, then Phase 9.
+Active implementation work: none. Phase 9 complete. Next work is Phase 10 hardening.
 
 ## Next Implementation Steps
 
-1. Integrate provider-backed model calls into planner and reflector behind the existing adapter boundary.
-2. Start Phase 9 evaluation harness work.
+1. Start Phase 10: stronger config validation, improved error messages, shell timeout controls.
+2. Integrate provider-backed model calls into planner and reflector behind the existing adapter boundary.
 3. Harden credential storage by moving away from the current custom local crypto scheme.
 4. Replace `shell=True` with an argv-based shell runner where possible.
 
@@ -251,3 +251,4 @@ Required before any meaningful tool execution:
 | 2026-04-24 | Decided that follow-up resolution stays heuristic-only for executable actions. |
 | 2026-04-24 | Decided that the `run_repl` terminal loop stays in `agent/repl.py`, closing the remaining Phase 8 boundary decision. |
 | 2026-04-24 | Tracked credential storage and shell execution hardening items as explicit next-step work. |
+| 2026-05-11 | Completed Phase 9 evaluation harness: scenario format, EvalRunner with auto-approving EvalToolRouter, temp workspace fixtures, SQLite metrics store, and CLI eval commands with 120 passing tests. |
