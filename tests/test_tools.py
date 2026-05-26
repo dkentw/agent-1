@@ -1,4 +1,4 @@
-from agent.config import AgentConfig
+from agent.config import AgentConfig, PermissionsConfig, ShellPermissions
 from agent.tool_models import ApprovalRequest, ToolResult
 from agent.tool_router import ToolRouter
 
@@ -105,3 +105,72 @@ def test_tool_router_can_cancel_shell_command(tmp_path):
     assert result.tool_name == "shell.run"
     assert result.status == "cancelled"
     assert result.cancelled is True
+
+
+def test_tool_router_times_out_shell_command(tmp_path):
+    config = AgentConfig(
+        permissions=PermissionsConfig(shell=ShellPermissions(timeout_seconds=1))
+    )
+    router = ToolRouter(config)
+    request = router.create_request(
+        tool_name="shell.run",
+        args={"command": 'python -c "import time; time.sleep(2)"'},
+        reason="run a long shell command",
+        workspace_path=tmp_path,
+    )
+
+    result = router.execute(request)
+
+    assert result.tool_name == "shell.run"
+    assert result.status == "timeout"
+    assert result.artifacts["timed_out"] is True
+    assert result.artifacts["timeout_seconds"] == 1
+
+
+def test_tool_router_runs_shell_commands_without_shell_by_default(tmp_path):
+    router = ToolRouter(AgentConfig())
+    request = router.create_request(
+        tool_name="shell.run",
+        args={"command": 'python -c "print(123)"'},
+        reason="run a simple command",
+        workspace_path=tmp_path,
+    )
+
+    result = router.execute(request)
+
+    assert result.status == "success"
+    assert result.stdout.strip() == "123"
+    assert result.artifacts["use_shell"] is False
+
+
+def test_tool_router_treats_explicit_shell_mode_as_high_risk(tmp_path):
+    router = ToolRouter(AgentConfig())
+    request = router.create_request(
+        tool_name="shell.run",
+        args={"command": "echo hi > out.txt", "use_shell": True},
+        reason="run shell syntax",
+        workspace_path=tmp_path,
+    )
+
+    result = router.route(request)
+
+    assert isinstance(result, ApprovalRequest)
+    assert result.risk_level == "high"
+
+
+def test_tool_router_rejects_missing_workspace(tmp_path):
+    router = ToolRouter(AgentConfig())
+    missing = tmp_path / "missing"
+    request = router.create_request(
+        tool_name="filesystem.list",
+        args={"path": "."},
+        reason="list missing workspace",
+        workspace_path=missing,
+    )
+
+    try:
+        router.execute(request)
+    except PermissionError as error:
+        assert "workspace path does not exist" in str(error)
+    else:
+        raise AssertionError("expected missing workspace to fail")

@@ -18,6 +18,8 @@ def classify_risk(tool_name: str, args: dict[str, object]) -> str:
     path = _tool_path(args)
     if _looks_sensitive_path(path):
         return "high"
+    if tool_name == "shell.run" and bool(args.get("use_shell", False)):
+        return "high"
 
     if tool_name in {"filesystem.read", "filesystem.list", "filesystem.stat", "git.status", "git.diff"}:
         return "low"

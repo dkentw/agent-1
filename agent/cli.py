@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from agent import __version__
-from agent.config import AgentConfig, load_config
+from agent.config import AgentConfig, ConfigValidationError, load_config
 from agent.llm import LLMConfigurationError, LLMError, ModelService
 from agent.logging import SessionLogger, log_session_started
 from agent.memory import MemoryService
@@ -106,7 +106,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    config = load_config(args.config)
+    try:
+        config = load_config(args.config)
+    except (ConfigValidationError, ValueError) as exc:
+        print(f"Invalid config ({args.config}): {exc}")
+        return 1
     registry = ModelRegistry()
 
     if args.model and not registry.validate(args.model):
@@ -394,6 +398,7 @@ def handle_config(args: argparse.Namespace, config: AgentConfig, config_path: Pa
         print("permissions:")
         print(f"  shell.default: {config.permissions.shell.default}")
         print(f"  shell.read_only: {config.permissions.shell.read_only}")
+        print(f"  shell.timeout_seconds: {config.permissions.shell.timeout_seconds}")
         print(f"  filesystem.read: {config.permissions.filesystem.read}")
         print(f"  filesystem.write: {config.permissions.filesystem.write}")
         print(f"  filesystem.delete: {config.permissions.filesystem.delete}")

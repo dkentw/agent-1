@@ -2,6 +2,7 @@ permissions:
   shell:
     default: ask
     read_only: allow
+    timeout_seconds: 30
   filesystem:
     read: allow
     write: ask

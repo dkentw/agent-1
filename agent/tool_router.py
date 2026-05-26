@@ -31,6 +31,10 @@ class ToolRouter:
                 workspace,
                 str(args["command"]),
                 is_cancelled=is_cancelled,
+                timeout_seconds=int(
+                    args.get("timeout_seconds", self.config.permissions.shell.timeout_seconds)
+                ),
+                use_shell=bool(args.get("use_shell", False)),
             ),
         }
 
@@ -70,19 +74,30 @@ class ToolRouter:
     def execute(self, request: ToolRequest, is_cancelled: Callable[[], bool] | None = None) -> ToolResult:
         if request.tool_name not in self.handlers:
             raise KeyError(f"unknown tool: {request.tool_name}")
+        _enforce_workspace(request.workspace_path)
 
         started_at = _utc_now_iso()
         raw = self.handlers[request.tool_name](request.workspace_path, request.args, is_cancelled)
         finished_at = _utc_now_iso()
-        cancelled = bool(raw.get("artifacts", {}).get("cancelled"))
-        status = "cancelled" if cancelled else ("success" if not raw.get("stderr") else "error")
+        artifacts = dict(raw.get("artifacts", {}))
+        cancelled = bool(artifacts.get("cancelled"))
+        timed_out = bool(artifacts.get("timed_out"))
+        returncode = artifacts.get("returncode")
+        failed = bool(raw.get("stderr")) or (
+            isinstance(returncode, int) and returncode != 0
+        )
+        status = (
+            "cancelled"
+            if cancelled
+            else ("timeout" if timed_out else ("error" if failed else "success"))
+        )
         return ToolResult(
             tool_name=request.tool_name,
             input=request.args,
             status=status,
             stdout=str(raw.get("stdout", "")),
             stderr=str(raw.get("stderr", "")),
-            artifacts=dict(raw.get("artifacts", {})),
+            artifacts=artifacts,
             started_at=started_at,
             finished_at=finished_at,
             risk_level=request.risk_level,
@@ -93,3 +108,11 @@ class ToolRouter:
 
 def _utc_now_iso() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _enforce_workspace(workspace_path: Path) -> None:
+    resolved = workspace_path.resolve()
+    if not resolved.exists():
+        raise PermissionError(f"workspace path does not exist: {workspace_path}")
+    if not resolved.is_dir():
+        raise PermissionError(f"workspace path is not a directory: {workspace_path}")

@@ -2,7 +2,7 @@
 
 ## Status Summary
 
-Current status: Phase 9 completed.
+Current status: Phase 10 started.
 
 The project now contains product requirements, technical design, implementation phases, this development tracker, the Phase 0 Python package foundation, the Phase 1 interactive CLI skeleton, the Phase 2 workspace detection layer, the Phase 3 tool runtime and permission layer, the Phase 4 basic agent loop, the Phase 4.5 heartbeat and liveness layer, the Phase 5 file editing and diff UX, the Phase 6 local memory MVP, the Phase 7 reflection and self-learning layer, and a core model registry and selection component.
 
@@ -36,7 +36,7 @@ The project now contains product requirements, technical design, implementation 
 | 7 | Reflection and Self-Learning | Completed | Added reflection service, safe memory proposals, memory confidence updates, top-level feedback commands, and REPL feedback for current task memories. |
 | 8 | Better Interactive Behavior | Completed | Added multiline continuation, compact rendering, `/history`, `/cancel`, slash-command suggestions, richer follow-up reuse, heuristic-only executable follow-up resolution, live heartbeat rendering, and closed the `run_repl` boundary decision. |
 | 9 | Evaluation Harness | Completed | Added scenario format, eval runner, temp workspace fixtures, SQLite metrics store, and CLI eval commands with comparison support. |
-| 10 | Hardening and Release Readiness | Not started | Add regression tests, documentation, install flow, cleanup. |
+| 10 | Hardening and Release Readiness | In progress | Started with stronger config validation, shell timeout controls, argv-based shell execution by default, workspace path enforcement, clearer config errors, and regression tests. |
 
 ## Completed Work
 
@@ -141,17 +141,23 @@ The project now contains product requirements, technical design, implementation 
 - Added cancellation-request tracking on `Ctrl+C` and loop cancellation exits.
 - Added Phase 8 REPL tests for the new interaction patterns.
 - Added richer live heartbeat rendering so long-running work shows compact state, step, tool, elapsed time, and cancel hints in both the main task flow and `/status`.
+- Started Phase 10 hardening and release readiness.
+- Added strict config validation for policy values, booleans, risk levels, mapping sections, and shell timeout bounds.
+- Added `permissions.shell.timeout_seconds` with a default 30-second shell timeout.
+- Changed the default shell runner path from `shell=True` to argv-based subprocess execution, with explicit shell mode treated as high risk.
+- Added workspace path existence/type enforcement before tool execution.
+- Added clearer CLI config error reporting and Phase 10 regression tests.
 
 ## Active Work
 
-Active implementation work: none. Phase 9 complete. Next work is Phase 10 hardening.
+Active implementation work: Phase 10 hardening is in progress.
 
 ## Next Implementation Steps
 
-1. Start Phase 10: stronger config validation, improved error messages, shell timeout controls.
-2. Integrate provider-backed model calls into planner and reflector behind the existing adapter boundary.
-3. Harden credential storage by moving away from the current custom local crypto scheme.
-4. Replace `shell=True` with an argv-based shell runner where possible.
+1. Continue Phase 10 with credential storage migration to a standard keychain or audited AEAD-backed store.
+2. Add log rotation or cleanup for session, memory, and evaluation artifacts.
+3. Add end-to-end release checks for install, REPL startup, approvals, and core task flows.
+4. Integrate provider-backed model calls into planner and reflector behind the existing adapter boundary.
 
 ## MVP Scope
 
@@ -252,3 +258,4 @@ Required before any meaningful tool execution:
 | 2026-04-24 | Decided that the `run_repl` terminal loop stays in `agent/repl.py`, closing the remaining Phase 8 boundary decision. |
 | 2026-04-24 | Tracked credential storage and shell execution hardening items as explicit next-step work. |
 | 2026-05-11 | Completed Phase 9 evaluation harness: scenario format, EvalRunner with auto-approving EvalToolRouter, temp workspace fixtures, SQLite metrics store, and CLI eval commands with 120 passing tests. |
+| 2026-05-26 | Started Phase 10 hardening with strict config validation, shell timeout controls, argv-based shell execution by default, workspace enforcement, clearer config errors, and 128 passing tests. |

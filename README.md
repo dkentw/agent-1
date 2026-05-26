@@ -1,6 +1,6 @@
 # Self-Learning AI Agent
 
-CLI-first self-learning AI agent. The current repository has completed Phase 8: better interactive behavior.
+CLI-first self-learning AI agent. The current repository has completed Phase 9 and has started Phase 10 hardening.
 
 ## Current State
 
@@ -65,11 +65,14 @@ Implemented:
 - default `agent.yaml`
 - starter tests
 - development status tracking
+- Phase 9 evaluation harness
+- Phase 10 config validation, shell timeout controls, argv-based shell execution, and workspace enforcement
 
 Not implemented yet:
 
 - review-required user preference memories
 - planner and reflector integration with provider-backed model calls
+- remaining Phase 10 release-readiness work such as keychain migration, log cleanup, and end-to-end release checks
 
 ## Requirements
 
@@ -155,6 +158,21 @@ Write tasks now preview a diff before approval. `/diff` shows the pending or las
 Memories are stored locally in SQLite. `/memory` shows loaded memories for the current task, `/memory search <query>` searches stored memories, and `agent memory ...` provides top-level CRUD commands.
 Successful tasks now write safe reflected memories for reusable workspace facts such as package manager, test commands, and frequently inspected files. `agent feedback good "reason"` and `agent feedback bad "reason"` update recent memory confidence, while `/feedback` applies the same scoring to the current task memories in the REPL.
 The agent now has a core model component with a typed model config, a local registry of supported models, session-level model selection, a provider adapter interface in `agent/llm.py`, and an OpenAI Responses adapter. Remote model calls are still disabled by default until you opt in through config.
+Shell tool execution uses an argv-based subprocess path by default, with `permissions.shell.timeout_seconds` controlling the timeout. Explicit shell syntax is available only through the tool-level `use_shell` flag and is treated as high risk.
+
+## Configuration
+
+The config loader validates policy values, booleans, risk levels, mapping sections, and shell timeout bounds. Invalid config now exits with a clear error instead of silently coercing unsafe values.
+
+Shell timeout example:
+
+```yaml
+permissions:
+  shell:
+    default: ask
+    read_only: allow
+    timeout_seconds: 30
+```
 
 ## LLM Setup
 
